@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from mem0.memory.utils import (
     parse_messages,
     parse_vision_messages,
+    process_telemetry_filters,
     remove_spaces_from_entities,
     sanitize_relationship_for_cypher,
 )
@@ -168,3 +169,43 @@ class TestRemoveSpacesFromEntities:
         f = remove_spaces_from_entities([dict(base)], sanitize_relationship=False)[0]["relationship"]
         assert t == sanitize_relationship_for_cypher("a/b")
         assert f == "a/b"
+
+
+class TestProcessTelemetryFilters:
+    def test_none_returns_empty_tuple(self):
+        """None input must return ([], {}) so callers can safely unpack into two variables."""
+        keys, encoded = process_telemetry_filters(None)
+        assert keys == []
+        assert encoded == {}
+
+    def test_empty_dict_returns_empty_results(self):
+        keys, encoded = process_telemetry_filters({})
+        assert keys == []
+        assert encoded == {}
+
+    def test_encodes_user_agent_run_ids(self):
+        filters = {"user_id": "u1", "agent_id": "a1", "run_id": "r1"}
+        keys, encoded = process_telemetry_filters(filters)
+        assert set(keys) == {"user_id", "agent_id", "run_id"}
+        assert "user_id" in encoded
+        assert "agent_id" in encoded
+        assert "run_id" in encoded
+        # MD5 hex digest is 32 hex chars
+        assert len(encoded["user_id"]) == 32
+        assert len(encoded["agent_id"]) == 32
+        assert len(encoded["run_id"]) == 32
+
+    def test_skips_missing_ids(self):
+        filters = {"user_id": "u1"}
+        keys, encoded = process_telemetry_filters(filters)
+        assert keys == ["user_id"]
+        assert "user_id" in encoded
+        assert "agent_id" not in encoded
+        assert "run_id" not in encoded
+
+    def test_ignores_extra_keys(self):
+        filters = {"user_id": "u1", "category": "sports", "priority": "high"}
+        keys, encoded = process_telemetry_filters(filters)
+        assert set(keys) == {"user_id", "category", "priority"}
+        assert "user_id" in encoded
+        assert "category" not in encoded
